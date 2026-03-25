@@ -286,8 +286,11 @@ class Measurement:
 
 class UT61EPLUS:
 
-    CP2110_VID = 0x10c4
-    CP2110_PID = 0xEA80
+    # List of Possible HID Devices to talk to
+    TARGETS = [
+        (0x10C4, 0xEA80),     # CP2110
+        (0x1A86, 0xE429),     # CH9329
+    ]
 
     _SEQUENCE_GET_NAME = bytes.fromhex('AB CD 03 5F 01 DA')
     _SEQUENCE_SEND_DATA = bytes.fromhex('AB CD 03 5E 01 D9')
@@ -310,13 +313,29 @@ class UT61EPLUS:
     def __init__(self):
         """open device"""
         self.dev = hid.device()
-        self.dev.open(self.CP2110_VID, self.CP2110_PID)
-        log.debug('device is open')
+        
+        # Find the Appropriate HID Device
+        device_vid_pid = self._find_device()
+        if not device_vid_pid:
+            raise RuntimeError("No Compatable HID Devices Found")
+
+        # Open the HID Target found using path
+        self.dev.open_path(device_vid_pid['path'])
+        #self.dev.open(self.CP2110_VID, self.CP2110_PID)
+        print(f"Opened: VID=0x{device_vid_pid['vendor_id']:04X}, PID=0x{device_vid_pid['product_id']:04X}")
+
+        # Send Setup Strings
         #self.dev.nonblocking = 1
-        self.dev.send_feature_report([0x41, 0x01])  # enable uart
+        self.dev.send_feature_report([0x41, 0x01])                                                  # enable uart
         self.dev.send_feature_report([0x50, 0x00, 0x00, 0x25, 0x80, 0x00, 0x00, 0x03, 0x00, 0x00])  # 9600 8N1 - from USB trace
-        self.dev.send_feature_report([0x43, 0x02])  # purge both fifos
+        self.dev.send_feature_report([0x43, 0x02])                                                  # purge both fifos
         log.debug('feature requests sent')
+
+    def _find_device(self):
+        for dev in hid.enumerate():
+            if (dev['vendor_id'], dev['product_id']) in self.TARGETS:
+                return dev
+        return None
 
     def _write(self, b: bytes):
         buf = []
